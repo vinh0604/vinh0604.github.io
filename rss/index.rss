@@ -1,0 +1,467 @@
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" version="2.0"><channel><title>A geeky corner</title><description>A place to share my thoughts and opinions about programming.</description><link>http://localhost:2368/</link><generator>Ghost 0.8</generator><lastBuildDate>Fri, 08 Jul 2016 14:14:06 GMT</lastBuildDate><atom:link href="http://localhost:2368/rss/" rel="self" type="application/rss+xml"/><ttl>60</ttl><item><title>Common security mistakes in Rails</title><description>&lt;p&gt;Rails is a mature web framework with a lot of improvements on security over time, but this doesn't mean it can totally protect your application from being hacked or compromised.&lt;/p&gt;
+
+&lt;p&gt;In this blog post, I will share some common mistakes that makes our Rails applications vulnerable.&lt;/p&gt;
+
+&lt;h3 id="crosssitescriptingxss"&gt;Cross-site scripting (XSS)&lt;/h3&gt;
+
+&lt;p&gt;Many&lt;/p&gt;</description><link>http://localhost:2368/common-security-mistakes-in-rails/</link><guid isPermaLink="false">549ae0b1-0622-4018-b022-41202e67de81</guid><category>rails</category><category>ruby</category><dc:creator>Vinh Bach</dc:creator><pubDate>Sat, 23 May 2015 20:38:00 GMT</pubDate><content:encoded>&lt;p&gt;Rails is a mature web framework with a lot of improvements on security over time, but this doesn't mean it can totally protect your application from being hacked or compromised.&lt;/p&gt;
+
+&lt;p&gt;In this blog post, I will share some common mistakes that makes our Rails applications vulnerable.&lt;/p&gt;
+
+&lt;h3 id="crosssitescriptingxss"&gt;Cross-site scripting (XSS)&lt;/h3&gt;
+
+&lt;p&gt;Many Rails developers could inadvertently fall into this attack, mostly because of the popular misusage of &lt;code&gt;raw&lt;/code&gt; and &lt;code&gt;html_safe&lt;/code&gt;. First, let look at those familiar pieces of code:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;p&amp;gt;&amp;lt;%== user.description %&amp;gt;&amp;lt;/p&amp;gt;
+
+&amp;lt;p&amp;gt;&amp;lt;%= raw user.description %&amp;gt;&amp;lt;/p&amp;gt;
+
+&amp;lt;p&amp;gt;&amp;lt;%= user.description.html_safe %&amp;gt;&amp;lt;/p&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;They are dangerous because they don't remove or encode &lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt; tags, so if someone try to submit description like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;{
+  email: "john.doe@gmail.com",
+  name: "John Doe",
+  description: "&amp;lt;script&amp;gt;alert('Hello world!')&amp;lt;/script&amp;gt;"
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It won't be suprise if the browser show up an alert popup in the next time you access. And if you think &lt;code&gt;alert('Hello world!')&lt;/code&gt; is too boring, there're other serious things a hacker could do, like he/she can steal cookie data, load harmful script files, or redirect user to a phishing website.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;{
+  description: "&amp;lt;script&amp;gt;alert(document.cookie)&amp;lt;/script&amp;gt;"
+}
+
+{
+  description: "&amp;lt;script src='path/to/evil_script.js'&amp;gt;&amp;lt;/script&amp;gt;"
+}
+
+{
+  description: "&amp;lt;script&amp;gt;window.location = 'http://fake_gmail.com'&amp;lt;/script&amp;gt;"
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Lucky for us, Rails has a very helpful helper to help us deal with those situations, it's called &lt;code&gt;sanitize&lt;/code&gt;. When using &lt;code&gt;sanitize&lt;/code&gt; with default options, it will return similar result with &lt;code&gt;html_safe&lt;/code&gt;, except it will exclude all &lt;code&gt;&amp;lt;script&amp;gt;&lt;/code&gt;, &lt;code&gt;&amp;lt;link&amp;gt;&lt;/code&gt; and &lt;code&gt;&amp;lt;style&amp;gt;&lt;/code&gt; tags.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;p&amp;gt;&amp;lt;%=sanitize user.description %&amp;gt;&amp;lt;/p&amp;gt;
+
+&amp;lt;!-- "&amp;lt;span&amp;gt;Hello&amp;lt;br/&amp;gt;world&amp;lt;/span&amp;gt;&amp;lt;script&amp;gt;&amp;lt;/script&amp;gt;" --&amp;gt;  
+&amp;lt;p&amp;gt;&amp;lt;span&amp;gt;Hello&amp;lt;br&amp;gt;world&amp;lt;/span&amp;gt;&amp;lt;/p&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If we want to allow only some specific tags or attributes, we could also do that with &lt;code&gt;sanitize&lt;/code&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;p&amp;gt;&amp;lt;%=sanitize user.description, tags: %w(br) %&amp;gt;&amp;lt;/p&amp;gt;
+
+&amp;lt;!-- "&amp;lt;span&amp;gt;Hello&amp;lt;br/&amp;gt;world&amp;lt;/span&amp;gt;&amp;lt;script&amp;gt;&amp;lt;/script&amp;gt;" --&amp;gt;  
+&amp;lt;p&amp;gt;Hello&amp;lt;br&amp;gt;world&amp;lt;/p&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Doing Javascript assignment inside a view template can also be exploited to perform XSS. For example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;script&amp;gt;  
+  var description = "&amp;lt;%== user.description %&amp;gt;";
+  // exploited with '";alert("Hello world!");"'
+  // exploited with '&amp;lt;/script&amp;gt;&amp;lt;script&amp;gt;alert("Hello world!")&amp;lt;/script&amp;gt;'
+&amp;lt;/script&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Usually, using &lt;code&gt;to_json&lt;/code&gt; is enough to sanitize values before assigned for a Javascript variable.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;script&amp;gt;  
+  var description = &amp;lt;%== user.description.to_json %&amp;gt;;
+  // var description = "\";alert(\"Hello world!\");\"";
+  // var description = "\u003c/script\u003e\u003cscript\u003ealert..."
+&amp;lt;/script&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;But if your application requires this configuration:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;ActiveSupport.escape_html_entities_in_json = false  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Then &lt;code&gt;to_json&lt;/code&gt; is still exploitable.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;script&amp;gt;  
+  var description = &amp;lt;%== user.description.to_json %&amp;gt;;
+  // exploited "&amp;lt;/script&amp;gt;&amp;lt;script&amp;gt;alert('Hello world!')&amp;lt;/script&amp;gt;"
+&amp;lt;/script&amp;gt;
+
+&amp;lt;!-- Result --&amp;gt;  
+&amp;lt;script&amp;gt;  
+  var description = "&amp;lt;/script&amp;gt;&amp;lt;script&amp;gt;alert('Hello world!')&amp;lt;/script&amp;gt;";
+&amp;lt;/script&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this case, your best option is to use &lt;code&gt;json_escape&lt;/code&gt; helper (alias &lt;code&gt;j&lt;/code&gt;).&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-html"&gt;&amp;lt;script&amp;gt;  
+  var description = "&amp;lt;%==j user.description %&amp;gt;";
+  // var description = "&amp;lt;\/script&amp;gt;&amp;lt;script&amp;gt;alert(\'Problem?\')&amp;lt;\/script&amp;gt;";
+&amp;lt;/script&amp;gt;  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id="sqlinjection"&gt;SQL Injection&lt;/h3&gt;
+
+&lt;p&gt;While &lt;code&gt;ActiveRecord&lt;/code&gt; do some good work to prevent SQL injection in its query interface, it still leaves door for that kind of attack with some methods such as &lt;code&gt;joins&lt;/code&gt;, &lt;code&gt;select&lt;/code&gt;, &lt;code&gt;group&lt;/code&gt;, etc. The reason is because those methods allow to pass any arbitrary string into the prepared sql statement.&lt;/p&gt;
+
+&lt;p&gt;One of the most common cases is using &lt;code&gt;order&lt;/code&gt; / &lt;code&gt;reorder&lt;/code&gt; with a raw sql portion.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;An attacker could exploit this to get user's password character by character.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;params[:sort_by] = "(CASE SUBSTR(password, 1, 1) WHEN 's' THEN 0 else 1 END)"  
+User.order("#{params[:sort_by]} #{params[:sort_dir]}")  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Or he/she could go further, trying to break our system simply by doing this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;# MySQL
+params[:sort_by] = "sleep(9999)"  
+User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")
+
+# PostgreSQL
+params[:sort_by] = "pg_sleep(9999)::varchar"  
+User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In order to prevent this attack, the best option is to explicitly whitelist all input from untrusted sources (browser, database, etc.). For example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;def whitelist_sort_fields  
+  {
+    'fname' =&amp;gt; 'customers.first_name',
+    'lname' =&amp;gt; 'customers.last_name',
+    'bdate' =&amp;gt; 'customers.birth_date'
+  }
+end
+
+def sort_field(sort_param)  
+  whitelist_sort_fields[sort_param] || 'customers.first_name'
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Another risk to SQL injection is the usage of &lt;code&gt;ActiveRecord::Base.connection.select_all&lt;/code&gt; or &lt;code&gt;ActiveRecord::Base.connection.execute&lt;/code&gt; because they will execute the sql statement without any sanitization step. Let take a look at the following sample:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;raw_sql = "SELECT * FROM customers WHERE first_name='#{name}'"  
+ActiveRecord::Base.connection.select_all(raw_sql)  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this sample, the &lt;code&gt;name&lt;/code&gt; variable is injected directly into the raw sql statement, opening the door for hackers doing some nasty stuffs with the database. Luckily, there're some ways we could do to prevent it.&lt;/p&gt;
+
+&lt;p&gt;If we use &lt;code&gt;ActiveRecord::Base.connection.select_all&lt;/code&gt; / &lt;code&gt;ActiveRecord::Base.connection.execute&lt;/code&gt; inside some class method of models, &lt;br&gt;
+we could utilize the protect method &lt;code&gt;sanitize_sql&lt;/code&gt; to sanitize the sql statement before passing it to &lt;code&gt;ActiveRecord::Base.connection.select_all&lt;/code&gt; / &lt;code&gt;ActiveRecord::Base.connection.execute&lt;/code&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;class Customer &amp;lt; ActiveRecord::Base
+
+  def self.get_raw_data(sql_array)
+    sql = sanitize_sql(sql_array)
+    connection.select_all(sql)
+  end
+end
+
+Customer.get_raw_data(  
+  ["SELECT * FROM customers WHERE first_name = ?", name])
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If not, we should explicitly quote all values passed into the sql statement.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;name = ActiveRecord::Base.connection.quote(name)  
+raw_sql = "SELECT * FROM customers WHERE first_name = #{name}"  
+ActiveRecord::Base.connection.select_all(raw_sql)  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id="insecurecookie"&gt;Insecure cookie&lt;/h3&gt;
+
+&lt;p&gt;Most of web applications use cookie to store session data or id. Knowing this, hackers could try to steal or replicate cookie data in order to hijack users' session.&lt;/p&gt;
+
+&lt;p&gt;Therefore, keeping your website cookie secure is very important, and there're 2 options you must always consider to use for your sensitive cookie values, &lt;code&gt;http_only&lt;/code&gt; and &lt;code&gt;secure&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Setting &lt;code&gt;http_only&lt;/code&gt; to &lt;code&gt;true&lt;/code&gt; is to disable Javascript access to this cookie, so it can prevent hackers stealing sensitve data in cookie when your website is compromised by XSS.&lt;/p&gt;
+
+&lt;p&gt;The &lt;code&gt;secure&lt;/code&gt; option ensures that your cookie won't never be transmitted via nonsecure protocols. So if your application force all request to use &lt;code&gt;https&lt;/code&gt;, this option should be set to &lt;code&gt;true&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Recommended configuration for a Rails application in production should be:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;# config/environments/production.rb
+Rails.application.configure do  
+  force_ssl = true
+end
+
+# config/initializers/session_store.rb
+Rails.application.config.session_store :cookie_store,  
+                                       key: '_my_app_session',
+                                       secure: Rails.env.production?,
+                                       httponly: true,
+                                       expire_after: 60.minutes
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Furthermore, if your application has any sensitive cookie beside the session data or id, it should also be signed and set &lt;code&gt;http_only&lt;/code&gt; and &lt;code&gt;secure&lt;/code&gt;.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;cookie.signed[:remember_me_token] = {  
+  value: 'XXX',
+  expires: 1.day,
+  httponly: true,
+  secure: Rails.env.production?
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id="conclusion"&gt;Conclusion&lt;/h3&gt;
+
+&lt;p&gt;In conclusion, there're values from untrusted sources such as request params or database that we should always remember to sanitize or whitelist before processing them. &lt;/p&gt;
+
+&lt;p&gt;More importantly, I hope this post would help you gain some awareness about security when working with your Rails applications. &lt;/p&gt;
+
+&lt;h3 id="readmore"&gt;Read more:&lt;/h3&gt;
+
+&lt;p&gt;&lt;a href="http://rail-sqli.com"&gt;http://rail-sqli.com&lt;/a&gt; &lt;br&gt;
+&lt;a href="http://brakemanscanner.org/"&gt;http://brakemanscanner.org/&lt;/a&gt; &lt;br&gt;
+&lt;a href="https://github.com/twitter/secureheaders"&gt;https://github.com/twitter/secureheaders&lt;/a&gt; &lt;br&gt;
+&lt;a href="https://codeclimate.com"&gt;https://codeclimate.com&lt;/a&gt;&lt;/p&gt;</content:encoded></item><item><title>Tips of exception handling in Ruby</title><description>&lt;p&gt;In this post, I'd like to share with you some basic knowledge and tips about exception handling in Ruby.&lt;/p&gt;
+
+&lt;h6 id="avoidingrescuewithexception"&gt;Avoiding rescue with Exception&lt;/h6&gt;
+
+&lt;p&gt;One common mistake when handling exceptions in Ruby is catching exceptions with an &lt;code&gt;Exception&lt;/code&gt; instance, e.g &lt;code&gt;rescue Exception =&amp;gt; e&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;The reason is very simple, let&lt;/p&gt;</description><link>http://localhost:2368/tips-of-exception-handling-in-ruby/</link><guid isPermaLink="false">f551b89e-70ed-4633-9807-18b11fba430f</guid><category>ruby</category><dc:creator>Vinh Bach</dc:creator><pubDate>Thu, 01 Jan 2015 18:32:00 GMT</pubDate><content:encoded>&lt;p&gt;In this post, I'd like to share with you some basic knowledge and tips about exception handling in Ruby.&lt;/p&gt;
+
+&lt;h6 id="avoidingrescuewithexception"&gt;Avoiding rescue with Exception&lt;/h6&gt;
+
+&lt;p&gt;One common mistake when handling exceptions in Ruby is catching exceptions with an &lt;code&gt;Exception&lt;/code&gt; instance, e.g &lt;code&gt;rescue Exception =&amp;gt; e&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;The reason is very simple, let take a look at the Ruby Exception Hierarchy below: &lt;br&gt;
+&lt;img src="https://dl.dropboxusercontent.com/u/12981551/exception.jpg" alt="Ruby Exception Hierarchy"&gt;
+As you see, &lt;code&gt;Exception&lt;/code&gt; is the root of all exception / error classes in Ruby, which also includes &lt;code&gt;NoMemoryError&lt;/code&gt;, &lt;code&gt;SyntaxError&lt;/code&gt;, &lt;code&gt;Interrupt&lt;/code&gt;, etc.&lt;/p&gt;
+
+&lt;p&gt;By rescuing with &lt;code&gt;Exception&lt;/code&gt;, you may inadvertently allow code with wrong syntax being deployed, or prevent user terminating your program in &lt;em&gt;normal way&lt;/em&gt;, like the example below:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;while true do  
+  begin
+    line = STDIN.gets
+    # heavy processing
+  rescue Exception =&amp;gt; e
+    puts "caught exception #{e.class}! ohnoes!"
+  end
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;When running this in console, users are unable to stop it by using &lt;code&gt;CTRL + C&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Therefore, you should use &lt;code&gt;StandardError&lt;/code&gt; instead when catching general exceptions, which also have a shorthand syntax &lt;code&gt;rescue =&amp;gt; e&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;You can check this &lt;a href="http://daniel.fone.net.nz/blog/2013/05/28/why-you-should-never-rescue-exception-in-ruby/"&gt;blog post&lt;/a&gt; for better understanding about this bad practice.&lt;/p&gt;
+
+&lt;h6 id="customexception"&gt;Custom Exception&lt;/h6&gt;
+
+&lt;p&gt;We can define a custom exception class that inherit from the base class &lt;code&gt;Exception&lt;/code&gt;, but usually we should inherit from &lt;code&gt;StandardError&lt;/code&gt; or its subclasses:  &lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;class MyCustomError &amp;lt; StandardError; end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We can also add additional attributes in our custom exception class to provide more context when handling the exception:  &lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;class MyCustomError &amp;lt; StandardError  
+  attr_reader :object
+
+  def initialize(object)
+    @object = object
+  end
+end
+
+# usage
+begin  
+  raise MyCustomError.new(user), 'Something broke'
+rescue MyCustomError =&amp;gt; e  
+  e.object # =&amp;gt; user
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h6 id="raiserescuesynonyms"&gt;raise / rescue synonyms&lt;/h6&gt;
+
+&lt;p&gt;Following are some common uses of &lt;code&gt;raise / rescue&lt;/code&gt; with their synonymous forms which can explain them a little bit clearer.  &lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;fail  
+# is equivalent to
+raise  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;raise MyCustomError, 'Something broke'  
+# is equivalent to
+raise MyCustomError.new('Something broke')  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;raise  
+# is equivalent to
+raise RuntimeError  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;raise 'Something broke'  
+# is equivalent to
+raise RuntimeError, 'Something broke'  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;begin  
+rescue =&amp;gt; e  
+end  
+# is equivalent to
+begin  
+rescue StandardError =&amp;gt; e  
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h6 id="raiserescuevsthrowcatch"&gt;raise / rescue vs throw / catch&lt;/h6&gt;
+
+&lt;p&gt;The difference between &lt;code&gt;raise / rescue&lt;/code&gt; and &lt;code&gt;throw / catch&lt;/code&gt; has caused much confusion for ruby beginners, especially for those who came from Java or C++ background. &lt;/p&gt;
+
+&lt;p&gt;While &lt;code&gt;raise / rescue&lt;/code&gt; is purely exception handling stuff for &lt;em&gt;exceptional circumstances&lt;/em&gt;, &lt;code&gt;throw / catch&lt;/code&gt; allow you to quick jump out of a block define by a specific symbol. &lt;/p&gt;
+
+&lt;p&gt;It come very handy if you want to break out of nested loops, for example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;found_person = nil  
+catch(:found) do  
+  people.each do |person|
+    person.cars.each do |car|
+      if car.name == 'Toyota Camry'
+        found_person = person
+        throw :found
+      end
+    end
+  end
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In this example, we try to find the first person who own a Toyota Camry by looping through all cars of each person and stop right after we find the first car that matched.&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;throw&lt;/code&gt; also accept a return value beside the identifying symbol, so the previous example could be rewritten as:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;found_person = catch(:found) do  
+  people.each do |person|
+    person.cars.each do |car|
+      throw(:found, person) if car.name == 'Toyota Camry'
+    end
+  end
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h6 id="shorthandsyntaxtorescueamethod"&gt;Shorthand syntax to rescue a method&lt;/h6&gt;
+
+&lt;p&gt;If you have some method like this:  &lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;def some_method  
+  begin
+    do_something!
+  rescue
+    # handle exception
+  end
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;You can make it a little bit cleaner by rewriting it as following:  &lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby"&gt;def some_method  
+  do_something!
+rescue  
+  # handle exception
+end  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h6 id="references"&gt;References&lt;/h6&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://www.slideshare.net/snmaynard/ruby-rails-error-handling-18123823"&gt;http://www.slideshare.net/snmaynard/ruby-rails-error-handling-18123823&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://phrogz.net/programmingruby/tut_exceptions.html"&gt;http://phrogz.net/programmingruby/tut_exceptions.html&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="http://rubymonk.com/learning/books/4-ruby-primer-ascent/chapters/41-exceptions/lessons/93-throw-and-catch"&gt;http://rubymonk.com/learning/books/4-ruby-primer-ascent/chapters/41-exceptions/lessons/93-throw-and-catch&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content:encoded></item><item><title>Implement Paypal Reference transactions with Active Merchant</title><description>&lt;p&gt;&lt;a href="https://developer.paypal.com/docs/classic/express-checkout/integration-guide/ECReferenceTxns"&gt;Reference transactions&lt;/a&gt; allow merchants to make subsequent transactions from a customer without the need to re-login into Paypal again. It can be implemented either as recurring payments to support subscription-based services or simply to setup a billing agreement that can be stored and used by merchants to make another payment.&lt;/p&gt;</description><link>http://localhost:2368/implement-paypal-reference-transactions-with-active-merchant/</link><guid isPermaLink="false">e8d59629-fca7-4821-a101-0b399833dc41</guid><category>ruby</category><category>rails</category><dc:creator>Vinh Bach</dc:creator><pubDate>Wed, 31 Dec 2014 06:04:00 GMT</pubDate><content:encoded>&lt;p&gt;&lt;a href="https://developer.paypal.com/docs/classic/express-checkout/integration-guide/ECReferenceTxns"&gt;Reference transactions&lt;/a&gt; allow merchants to make subsequent transactions from a customer without the need to re-login into Paypal again. It can be implemented either as recurring payments to support subscription-based services or simply to setup a billing agreement that can be stored and used by merchants to make another payment.&lt;/p&gt;
+
+&lt;p&gt;Implement payments with a billing agreement can greatly improve customer experence of your application by reducing customers' effort during checkout. The basic flow for it would be following:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;The first time a customer checkout on your application, it will set up a billing agreement along with the payment request between your application and customer and send this to Paypal.  &lt;/li&gt;
+&lt;li&gt;Customer login into Paypal, accept the payment and billing agreement.  &lt;/li&gt;
+&lt;li&gt;Your application complete the payment and store the billing agreement ID into the database.  &lt;/li&gt;
+&lt;li&gt;Next time customer check out, your application can directly make payments with Paypal based on the stored billing agreement ID without redirecting customer to Paypal login page.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;In this post, I will share you how to implement reference transactions in Ruby with &lt;a href="https://github.com/Shopify/active_merchant"&gt;active_merchant&lt;/a&gt; gem and Paypal Express Checkout API.&lt;/p&gt;
+
+&lt;p&gt;Important note: In order to use reference transactions in production, your paypal merchant account should get the permission from Paypal. Please contact with Paypal support team about it.&lt;/p&gt;
+
+&lt;h4 id="setuppaypalgateway"&gt;Setup paypal gateway&lt;/h4&gt;
+
+&lt;p&gt;Using your merchant account username, password and signature to setup paypal express gateway:&lt;/p&gt;
+
+&lt;pre data-line-numbers="" class="line-numbers language-ruby"&gt;  &lt;code class="language-ruby"&gt;paypal_gateway = ActiveMerchant::Billing::PaypalExpressGateway.new(  
+    login: ENV["PAYPAL_USERNAME"],
+    password: ENV["PAYPAL_PASSWORD"],
+    signature: ENV["PAYPAL_SIGNATURE"]
+  )&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id="setuppaymentandbillingagreement"&gt;Setup payment and billing agreement&lt;/h4&gt;
+
+&lt;p&gt;You can setup a payment with billing agreement similar to normal express checkout payment, the only difference is that you need to specify param &lt;code&gt;billing_agreement&lt;/code&gt; into your options hash. For example:&lt;/p&gt;
+
+&lt;pre data-line-numbers="" class="line-numbers language-ruby"&gt;  &lt;code class="language-ruby"&gt;purchase = paypal_gateway.setup_purchase(  
+    100,
+    billing_agreement: {
+      type: 'MerchantInitiatedBillingSingleAgreement',
+      description: 'Sample billing agreement'
+    },
+    ip: request.remote_ip,
+    return_url: "&lt;a href="http://localhost:3000/return"&gt;http://localhost:3000/return&lt;/a&gt;",
+    cancel_return_url: "&lt;a href="http://localhost:3000/cancel"&gt;http://localhost:3000/cancel&lt;/a&gt;",
+    description: 'Sample',
+    subtotal: 100,
+    currency: 'USD',
+    shipping: 0,
+    handling: 0,
+    tax: 0,
+    items: [{ name: 'Sample item', quantity: 1, amount: 100 }],
+    allow_guest_checkout: true
+  )&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In the above example, we set billing agreement type as &lt;code&gt;MerchantInitiatedBillingSingleAgreement&lt;/code&gt;, which means Paypal will create a single agreement for all transactions between your application and a customer. Other options include &lt;code&gt;MerchantInitiatedBilling&lt;/code&gt; in which Paypal will create new agreement for every express checkout request and &lt;code&gt;RecurringPayments&lt;/code&gt; which only used for recurring payments.&lt;/p&gt;
+
+&lt;p&gt;After setting up payment successfully, we will redirect the customer to Paypal login page. When login, he/she would see the following notification:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src="https://dl.dropboxusercontent.com/u/12981551/Review_your_information.png" alt="Paypal"&gt;&lt;/p&gt;
+
+&lt;p&gt;If the customer agree, he/she would be redirected back to the return url provided in previous request alongs with &lt;code&gt;token&lt;/code&gt; and &lt;code&gt;PayerID&lt;/code&gt; data. From there, your application will double check the payment response using the &lt;code&gt;token&lt;/code&gt;, make request to store the billing address ID and store it into the database:&lt;/p&gt;
+
+&lt;pre data-line-numbers="" class="line-numbers language-ruby"&gt;  &lt;code class="language-ruby"&gt;purchase = paypal_gateway.details_for(params[:token])
+
+  return false unless purchase.success?
+
+  billing_agreement = paypal_gateway.store(params[:token], {})
+
+  if billing_agreement.success?
+    billing_agreement_id = billing_agreement.authorization
+    # Save billing agreement ID into the database
+  end&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Finally, using the stored billing agreement ID to complete the payment, and all subsequent transactions of customer can go directly to this step:&lt;/p&gt;
+
+&lt;pre data-line-numbers="" class="line-numbers language-ruby"&gt;  &lt;code class="language-ruby"&gt;purchase = paypal_gateway.reference_transaction(  
+    100,
+    reference_id: billing_agreement_id,
+    description: 'Sample',
+    subtotal: 100,
+    currency: 'USD',
+    shipping: 0,
+    handling: 0,
+    tax: 0,
+    items: [{ name: 'Sample item', quantity: 1, amount: 100 }]
+  )
+
+  do_something if purchase.success?&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h4 id="cancelabillingagreement"&gt;Cancel a billing agreement&lt;/h4&gt;
+
+&lt;p&gt;To cancel a billing agreement, you could use the &lt;code&gt;unstore&lt;/code&gt; method:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class="language-ruby line-numbers"&gt;paypal_gateway.unstore(billing_agreement_id, {})  
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;And that's all for this post. Thanks :)&lt;/p&gt;</content:encoded></item></channel></rss>

@@ -1,0 +1,384 @@
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <title>Common security mistakes in Rails</title>
+    <meta name="description" content="">
+
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="shortcut icon" href="../favicon.ico">
+
+    <link rel="stylesheet" type="text/css" href="../assets/css/screen.css?v=d91b2f636f">
+    <link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Merriweather:300,700,700italic,300italic%7COpen+Sans:700,400">
+
+    <link rel="canonical" href="index.html">
+    <meta name="referrer" content="origin">
+    
+    <meta property="og:site_name" content="A geeky corner">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Common security mistakes in Rails">
+    <meta property="og:description" content="Rails is a mature web framework with a lot of improvements on security over time, but this doesn't mean it can totally protect your application from being hacked or compromised. In this blog post, I will share some common mistakes that makes our Rails applications vulnerable. Cross-site scripting (XSS) Many">
+    <meta property="og:url" content="http://localhost:2368/common-security-mistakes-in-rails/">
+    <meta property="article:published_time" content="2015-05-23T20:38:00.000Z">
+    <meta property="article:modified_time" content="2016-07-08T13:59:45.624Z">
+    <meta property="article:tag" content="rails">
+    <meta property="article:tag" content="ruby">
+    
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Common security mistakes in Rails">
+    <meta name="twitter:description" content="Rails is a mature web framework with a lot of improvements on security over time, but this doesn't mean it can totally protect your application from being hacked or compromised. In this blog post, I will share some common mistakes that makes our Rails applications vulnerable. Cross-site scripting (XSS) Many">
+    <meta name="twitter:url" content="http://localhost:2368/common-security-mistakes-in-rails/">
+    <meta name="twitter:label1" content="Written by">
+    <meta name="twitter:data1" content="Vinh Bach">
+    <meta name="twitter:label2" content="Filed under">
+    <meta name="twitter:data2" content="rails, ruby">
+    
+    <script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "publisher": {
+        "@type": "Organization",
+        "name": "A geeky corner",
+        "logo": "http://localhost:2368/ghost/img/ghosticon.jpg"
+    },
+    "author": {
+        "@type": "Person",
+        "name": "Vinh Bach",
+        "image": "//www.gravatar.com/avatar/a8637bb35bf705a7a5e7f5e69c67b784?s=250&d=mm&r=x",
+        "url": "http://localhost:2368/author/vinh/",
+        "sameAs": []
+    },
+    "headline": "Common security mistakes in Rails",
+    "url": "http://localhost:2368/common-security-mistakes-in-rails/",
+    "datePublished": "2015-05-23T20:38:00.000Z",
+    "dateModified": "2016-07-08T13:59:45.624Z",
+    "keywords": "rails, ruby",
+    "description": "Rails is a mature web framework with a lot of improvements on security over time, but this doesn&#x27;t mean it can totally protect your application from being hacked or compromised. In this blog post, I will share some common mistakes that makes our Rails applications vulnerable. Cross-site scripting (XSS) Many"
+}
+    </script>
+
+    <meta name="generator" content="Ghost 0.8">
+    <link rel="alternate" type="application/rss+xml" title="A geeky corner" href="../rss/index.html">
+</head>
+<body class="post-template tag-rails tag-ruby nav-closed">
+
+    <div class="nav">
+    <h3 class="nav-title">Menu</h3>
+    <a href="index.html#" class="nav-close">
+        <span class="hidden">Close</span>
+    </a>
+    <ul>
+            <li class="nav-home" role="presentation"><a href="../">Home</a></li>
+    </ul>
+        <a class="subscribe-button icon-feed" href="../rss/index.rss">Subscribe</a>
+</div>
+<span class="nav-cover"></span>
+
+
+    <div class="site-wrapper">
+
+        
+
+
+<header class="main-header post-head no-cover">
+    <nav class="main-nav  clearfix">
+        
+            <a class="menu-button icon-menu" href="index.html#"><span class="word">Menu</span></a>
+    </nav>
+</header>
+
+<main class="content" role="main">
+    <article class="post tag-rails tag-ruby">
+
+        <header class="post-header">
+            <h1 class="post-title">Common security mistakes in Rails</h1>
+            <section class="post-meta">
+                <time class="post-date" datetime="2015-05-24">24 May 2015</time>  on <a href="../tag/rails/">rails</a>, <a href="../tag/ruby/">ruby</a>
+            </section>
+        </header>
+
+        <section class="post-content">
+            <p>Rails is a mature web framework with a lot of improvements on security over time, but this doesn't mean it can totally protect your application from being hacked or compromised.</p>
+
+<p>In this blog post, I will share some common mistakes that makes our Rails applications vulnerable.</p>
+
+<h3 id="crosssitescriptingxss">Cross-site scripting (XSS)</h3>
+
+<p>Many Rails developers could inadvertently fall into this attack, mostly because of the popular misusage of <code>raw</code> and <code>html_safe</code>. First, let look at those familiar pieces of code:</p>
+
+<pre><code class="language-html">&lt;p&gt;&lt;%== user.description %&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;%= raw user.description %&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;%= user.description.html_safe %&gt;&lt;/p&gt;  
+</code></pre>
+
+<p>They are dangerous because they don't remove or encode <code>&lt;script&gt;</code> tags, so if someone try to submit description like this:</p>
+
+<pre><code class="language-ruby">{
+  email: "john.doe@gmail.com",
+  name: "John Doe",
+  description: "&lt;script&gt;alert('Hello world!')&lt;/script&gt;"
+}
+</code></pre>
+
+<p>It won't be suprise if the browser show up an alert popup in the next time you access. And if you think <code>alert('Hello world!')</code> is too boring, there're other serious things a hacker could do, like he/she can steal cookie data, load harmful script files, or redirect user to a phishing website.</p>
+
+<pre><code class="language-ruby">{
+  description: "&lt;script&gt;alert(document.cookie)&lt;/script&gt;"
+}
+
+{
+  description: "&lt;script src='path/to/evil_script.js'&gt;&lt;/script&gt;"
+}
+
+{
+  description: "&lt;script&gt;window.location = 'http://fake_gmail.com'&lt;/script&gt;"
+}
+</code></pre>
+
+<p>Lucky for us, Rails has a very helpful helper to help us deal with those situations, it's called <code>sanitize</code>. When using <code>sanitize</code> with default options, it will return similar result with <code>html_safe</code>, except it will exclude all <code>&lt;script&gt;</code>, <code>&lt;link&gt;</code> and <code>&lt;style&gt;</code> tags.</p>
+
+<pre><code class="language-html">&lt;p&gt;&lt;%=sanitize user.description %&gt;&lt;/p&gt;
+
+&lt;!-- "&lt;span&gt;Hello&lt;br/&gt;world&lt;/span&gt;&lt;script&gt;&lt;/script&gt;" --&gt;  
+&lt;p&gt;&lt;span&gt;Hello&lt;br&gt;world&lt;/span&gt;&lt;/p&gt;  
+</code></pre>
+
+<p>If we want to allow only some specific tags or attributes, we could also do that with <code>sanitize</code>.</p>
+
+<pre><code class="language-html">&lt;p&gt;&lt;%=sanitize user.description, tags: %w(br) %&gt;&lt;/p&gt;
+
+&lt;!-- "&lt;span&gt;Hello&lt;br/&gt;world&lt;/span&gt;&lt;script&gt;&lt;/script&gt;" --&gt;  
+&lt;p&gt;Hello&lt;br&gt;world&lt;/p&gt;  
+</code></pre>
+
+<p>Doing Javascript assignment inside a view template can also be exploited to perform XSS. For example:</p>
+
+<pre><code class="language-html">&lt;script&gt;  
+  var description = "&lt;%== user.description %&gt;";
+  // exploited with '";alert("Hello world!");"'
+  // exploited with '&lt;/script&gt;&lt;script&gt;alert("Hello world!")&lt;/script&gt;'
+&lt;/script&gt;  
+</code></pre>
+
+<p>Usually, using <code>to_json</code> is enough to sanitize values before assigned for a Javascript variable.</p>
+
+<pre><code class="language-html">&lt;script&gt;  
+  var description = &lt;%== user.description.to_json %&gt;;
+  // var description = "\";alert(\"Hello world!\");\"";
+  // var description = "\u003c/script\u003e\u003cscript\u003ealert..."
+&lt;/script&gt;  
+</code></pre>
+
+<p>But if your application requires this configuration:</p>
+
+<pre><code class="language-ruby">ActiveSupport.escape_html_entities_in_json = false  
+</code></pre>
+
+<p>Then <code>to_json</code> is still exploitable.</p>
+
+<pre><code class="language-html">&lt;script&gt;  
+  var description = &lt;%== user.description.to_json %&gt;;
+  // exploited "&lt;/script&gt;&lt;script&gt;alert('Hello world!')&lt;/script&gt;"
+&lt;/script&gt;
+
+&lt;!-- Result --&gt;  
+&lt;script&gt;  
+  var description = "&lt;/script&gt;&lt;script&gt;alert('Hello world!')&lt;/script&gt;";
+&lt;/script&gt;  
+</code></pre>
+
+<p>In this case, your best option is to use <code>json_escape</code> helper (alias <code>j</code>).</p>
+
+<pre><code class="language-html">&lt;script&gt;  
+  var description = "&lt;%==j user.description %&gt;";
+  // var description = "&lt;\/script&gt;&lt;script&gt;alert(\'Problem?\')&lt;\/script&gt;";
+&lt;/script&gt;  
+</code></pre>
+
+<h3 id="sqlinjection">SQL Injection</h3>
+
+<p>While <code>ActiveRecord</code> do some good work to prevent SQL injection in its query interface, it still leaves door for that kind of attack with some methods such as <code>joins</code>, <code>select</code>, <code>group</code>, etc. The reason is because those methods allow to pass any arbitrary string into the prepared sql statement.</p>
+
+<p>One of the most common cases is using <code>order</code> / <code>reorder</code> with a raw sql portion.</p>
+
+<pre><code class="language-ruby">User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")  
+</code></pre>
+
+<p>An attacker could exploit this to get user's password character by character.</p>
+
+<pre><code class="language-ruby">params[:sort_by] = "(CASE SUBSTR(password, 1, 1) WHEN 's' THEN 0 else 1 END)"  
+User.order("#{params[:sort_by]} #{params[:sort_dir]}")  
+</code></pre>
+
+<p>Or he/she could go further, trying to break our system simply by doing this:</p>
+
+<pre><code class="language-ruby"># MySQL
+params[:sort_by] = "sleep(9999)"  
+User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")
+
+# PostgreSQL
+params[:sort_by] = "pg_sleep(9999)::varchar"  
+User.reorder("#{params[:sort_by]} #{params[:sort_dir]}")  
+</code></pre>
+
+<p>In order to prevent this attack, the best option is to explicitly whitelist all input from untrusted sources (browser, database, etc.). For example:</p>
+
+<pre><code class="language-ruby">def whitelist_sort_fields  
+  {
+    'fname' =&gt; 'customers.first_name',
+    'lname' =&gt; 'customers.last_name',
+    'bdate' =&gt; 'customers.birth_date'
+  }
+end
+
+def sort_field(sort_param)  
+  whitelist_sort_fields[sort_param] || 'customers.first_name'
+end  
+</code></pre>
+
+<p>Another risk to SQL injection is the usage of <code>ActiveRecord::Base.connection.select_all</code> or <code>ActiveRecord::Base.connection.execute</code> because they will execute the sql statement without any sanitization step. Let take a look at the following sample:</p>
+
+<pre><code class="language-ruby">raw_sql = "SELECT * FROM customers WHERE first_name='#{name}'"  
+ActiveRecord::Base.connection.select_all(raw_sql)  
+</code></pre>
+
+<p>In this sample, the <code>name</code> variable is injected directly into the raw sql statement, opening the door for hackers doing some nasty stuffs with the database. Luckily, there're some ways we could do to prevent it.</p>
+
+<p>If we use <code>ActiveRecord::Base.connection.select_all</code> / <code>ActiveRecord::Base.connection.execute</code> inside some class method of models, <br>
+we could utilize the protect method <code>sanitize_sql</code> to sanitize the sql statement before passing it to <code>ActiveRecord::Base.connection.select_all</code> / <code>ActiveRecord::Base.connection.execute</code></p>
+
+<pre><code class="language-ruby">class Customer &lt; ActiveRecord::Base
+
+  def self.get_raw_data(sql_array)
+    sql = sanitize_sql(sql_array)
+    connection.select_all(sql)
+  end
+end
+
+Customer.get_raw_data(  
+  ["SELECT * FROM customers WHERE first_name = ?", name])
+</code></pre>
+
+<p>If not, we should explicitly quote all values passed into the sql statement.</p>
+
+<pre><code class="language-ruby">name = ActiveRecord::Base.connection.quote(name)  
+raw_sql = "SELECT * FROM customers WHERE first_name = #{name}"  
+ActiveRecord::Base.connection.select_all(raw_sql)  
+</code></pre>
+
+<h3 id="insecurecookie">Insecure cookie</h3>
+
+<p>Most of web applications use cookie to store session data or id. Knowing this, hackers could try to steal or replicate cookie data in order to hijack users' session.</p>
+
+<p>Therefore, keeping your website cookie secure is very important, and there're 2 options you must always consider to use for your sensitive cookie values, <code>http_only</code> and <code>secure</code>.</p>
+
+<p>Setting <code>http_only</code> to <code>true</code> is to disable Javascript access to this cookie, so it can prevent hackers stealing sensitve data in cookie when your website is compromised by XSS.</p>
+
+<p>The <code>secure</code> option ensures that your cookie won't never be transmitted via nonsecure protocols. So if your application force all request to use <code>https</code>, this option should be set to <code>true</code>.</p>
+
+<p>Recommended configuration for a Rails application in production should be:</p>
+
+<pre><code class="language-ruby"># config/environments/production.rb
+Rails.application.configure do  
+  force_ssl = true
+end
+
+# config/initializers/session_store.rb
+Rails.application.config.session_store :cookie_store,  
+                                       key: '_my_app_session',
+                                       secure: Rails.env.production?,
+                                       httponly: true,
+                                       expire_after: 60.minutes
+</code></pre>
+
+<p>Furthermore, if your application has any sensitive cookie beside the session data or id, it should also be signed and set <code>http_only</code> and <code>secure</code>.</p>
+
+<pre><code class="language-ruby">cookie.signed[:remember_me_token] = {  
+  value: 'XXX',
+  expires: 1.day,
+  httponly: true,
+  secure: Rails.env.production?
+}
+</code></pre>
+
+<h3 id="conclusion">Conclusion</h3>
+
+<p>In conclusion, there're values from untrusted sources such as request params or database that we should always remember to sanitize or whitelist before processing them. </p>
+
+<p>More importantly, I hope this post would help you gain some awareness about security when working with your Rails applications. </p>
+
+<h3 id="readmore">Read more:</h3>
+
+<p><a href="http://rail-sqli.com">http://rail-sqli.com</a> <br>
+<a href="http://brakemanscanner.org/">http://brakemanscanner.org/</a> <br>
+<a href="https://github.com/twitter/secureheaders">https://github.com/twitter/secureheaders</a> <br>
+<a href="https://codeclimate.com">https://codeclimate.com</a></p>
+        </section>
+
+        <footer class="post-footer">
+
+
+            <figure class="author-image">
+                <a class="img" href="../author/vinh/" style="background-image: url(http://www.gravatar.com/avatar/a8637bb35bf705a7a5e7f5e69c67b784?s&amp;)"><span class="hidden">Vinh Bach's Picture</span></a>
+            </figure>
+
+            <section class="author">
+                <h4><a href="../author/vinh/">Vinh Bach</a></h4>
+
+                    <p>Read <a href="../author/vinh/">more posts</a> by this author.</p>
+                <div class="author-meta">
+                    
+                    
+                </div>
+            </section>
+
+
+            <section class="share">
+                <h4>Share this post</h4>
+                <a class="icon-twitter" href="https://twitter.com/intent/tweet?text=Common%20security%20mistakes%20in%20Rails&amp;url=http://localhost:2368/common-security-mistakes-in-rails/" onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;">
+                    <span class="hidden">Twitter</span>
+                </a>
+                <a class="icon-facebook" href="https://www.facebook.com/sharer/sharer.php?u=http://localhost:2368/common-security-mistakes-in-rails/" onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;">
+                    <span class="hidden">Facebook</span>
+                </a>
+                <a class="icon-google-plus" href="https://plus.google.com/share?url=http://localhost:2368/common-security-mistakes-in-rails/" onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;">
+                    <span class="hidden">Google+</span>
+                </a>
+            </section>
+
+
+        </footer>
+
+    </article>
+</main>
+
+<aside class="read-next">
+    <a class="read-next-story prev no-cover" href="../tips-of-exception-handling-in-ruby/">
+        <section class="post">
+            <h2>Tips of exception handling in Ruby</h2>
+            <p>In this post, I'd like to share with you some basic knowledge and tips about exception handling in Ruby.…</p>
+        </section>
+    </a>
+</aside>
+
+
+
+        <footer class="site-footer clearfix">
+            <section class="copyright"><a href="../">A geeky corner</a> © 2016</section>
+            <section class="poweredby">Proudly published with <a href="https://ghost.org">Ghost</a></section>
+        </footer>
+
+    </div>
+
+    <script type="text/javascript" src="https://code.jquery.com/jquery-1.12.0.min.js"></script>
+    
+    <script type="text/javascript" src="../assets/js/jquery.fitvids.js?v=d91b2f636f"></script>
+    <script type="text/javascript" src="../assets/js/index.js?v=d91b2f636f"></script>
+
+</body>
